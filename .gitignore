@@ -46,6 +46,7 @@ pnpm-debug.log*
 backend/artifacts/
 backend/data/
 backend/.env
+backend/chroma_data/
 
 # Infrastructure local state
 *.log
