@@ -1,5 +1,38 @@
 version: "3.9"
 services:
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    env_file:
+      - ../backend/.env.example
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+      - neo4j
+      - chroma
+
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    command: celery -A app.workers.tasks_generation.celery worker --loglevel=info
+    env_file:
+      - ../backend/.env.example
+    depends_on:
+      - redis
+      - api
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+
   postgres:
     image: postgres:16
     environment:
@@ -21,3 +54,22 @@ services:
     ports:
       - "7474:7474"
       - "7687:7687"
+
+  chroma:
+    image: chromadb/chroma:0.5.5
+    ports:
+      - "8001:8000"
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus

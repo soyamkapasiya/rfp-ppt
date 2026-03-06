@@ -3,10 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.core.logging import configure_logging
+from app.core.observability import register_observability
 
 configure_logging()
 
-app = FastAPI(title="RFP AI Platform", version="0.1.0")
+app = FastAPI(title="RFP AI Platform", version="0.2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -16,6 +17,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+register_observability(app)
 app.include_router(api_router)
 
 

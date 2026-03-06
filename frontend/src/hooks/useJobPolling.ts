@@ -1,30 +1,59 @@
 import { useEffect, useState } from "react";
-import { getJob } from "../lib/api";
+import { getJob, JobStatus } from "../lib/api";
 
 export function useJobPolling(jobId: string | null) {
-  const [job, setJob] = useState<any>(null);
+  const [data, setData] = useState<JobStatus | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!jobId) return;
+    if (!jobId) {
+      setData(null);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
 
     let active = true;
-    const timer = setInterval(async () => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const fetchOnce = async () => {
+      setIsLoading(true);
       try {
-        const data = await getJob(jobId);
-        if (!active) return;
-        setJob(data);
-        if (["completed", "failed"].includes(data.status)) clearInterval(timer);
+        const result = await getJob(jobId);
+        if (!active) {
+          return;
+        }
+        setData(result);
+        setError(null);
+
+        if (result.status === "completed" || result.status === "failed") {
+          if (timer) {
+            clearInterval(timer);
+            timer = null;
+          }
+        }
       } catch (e) {
-        setError((e as Error).message);
+        if (active) {
+          setError((e as Error).message);
+        }
+      } finally {
+        if (active) {
+          setIsLoading(false);
+        }
       }
-    }, 2500);
+    };
+
+    fetchOnce();
+    timer = setInterval(fetchOnce, 2500);
 
     return () => {
       active = false;
-      clearInterval(timer);
+      if (timer) {
+        clearInterval(timer);
+      }
     };
   }, [jobId]);
 
-  return { job, error };
+  return { data, isLoading, error };
 }

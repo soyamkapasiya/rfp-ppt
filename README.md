@@ -1,41 +1,51 @@
 # RFP AI Platform
 
-Implementation scaffold based on `RFP_AI_PROJECT_GUIDE.md`.
+Production-oriented implementation based on `RFP_AI_PROJECT_GUIDE.md`.
 
-## What is implemented
+## Implemented
 
-- FastAPI backend with project and generation routes
-- Deterministic generation pipeline that outputs:
-  - `deck.pptx`
-  - `questions.json`
-  - `sources.json`
-  - `quality_report.json`
-- Core domain schemas, quality gate, slide planner, question miner
-- Placeholder adapters for Tavily, Neo4j, ChromaDB, and Celery workers
-- React + Vite frontend for project input and job status polling
-- Docker Compose infra skeleton (Postgres, Redis, Neo4j)
+- Backend: FastAPI + role-based auth (API key), persisted job store (SQLite), async queue dispatch (Celery or thread fallback), LangGraph orchestration with deterministic fallback.
+- Retrieval: Tavily discovery + HTTP crawler + source trust/freshness enrichment + Chroma/Neo4j hybrid retrieval service.
+- Quality: claim verification, conflict checks, freshness flags, compliance coverage checks, quality score gating.
+- Artifacts: `deck.pptx`, `questions.json`, `sources.json`, `quality_report.json`, `claim_report.json`.
+- Frontend: React + TypeScript + Vite + TanStack Query + Zustand with screens:
+  - New Project
+  - Generation Console
+  - Question Bank
+  - Deck Preview
+  - Export Center
+- Infra: Docker Compose for api, worker, frontend, postgres, redis, neo4j, chroma, prometheus, grafana.
+- CI: GitHub Actions workflow (`ruff`, `mypy`, unit tests, frontend build).
 
-## Backend quickstart
+## API auth
+
+Use `X-API-Key` header (or `x-api-key` query param for download links).
+
+Default local keys (from `.env.example`):
+- admin: `admin-local-key`
+- editor: `editor-local-key`
+- viewer: `viewer-local-key`
+
+## Sample Flow`n`nSee [docs/sample_flow.md](docs/sample_flow.md) for a full request-to-export walkthrough.`n`n## Run locally
 
 ```bash
+# backend
 cd backend
 python -m venv .venv
 . .venv/Scripts/activate
-pip install -e .
+pip install -e .[dev]
 uvicorn app.main:app --reload --port 8000
-```
 
-## Frontend quickstart
-
-```bash
-cd frontend
+# frontend
+cd ../frontend
 npm install
 npm run dev
 ```
 
-## API
+## Start full stack with Docker
 
-- `POST /api/v1/generation/rfp-ppt`
-- `GET /api/v1/generation/jobs/{job_id}`
-- `POST /api/v1/projects`
-- `GET /health`
+```bash
+cd infra
+docker compose up -d --build
+```
+

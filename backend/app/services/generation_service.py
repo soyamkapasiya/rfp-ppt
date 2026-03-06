@@ -1,53 +1,20 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from uuid import uuid4
 
-from app.models.domain import ClarifiedRequirement, RequirementInput
+from app.core.config import settings
+from app.db.chroma import ChromaStore
+from app.db.neo4j import Neo4jStore
+from app.models.domain import RequirementInput
+from app.services.audit_service import audit_logger
+from app.services.graphrag_service import GraphRAGService
+from app.services.job_store import SqliteJobStore
 from app.services.ppt_renderer import render_ppt
-from app.services.quality_service import score_deck
-from app.services.question_miner import mine_questions
-from app.services.slide_planner import build_slide_plan
-from app.services.slide_writer import write_slides
-from app.services.tavily_service import TavilyService
+from app.workflows.rfp_graph import run_pipeline
 
-
-@dataclass
-class JobRecord:
-    job_id: str
-    status: str = "queued"
-    stage: str = "queued"
-    artifacts: dict = field(default_factory=dict)
-    error: str | None = None
-
-
-class JobStore:
-    def __init__(self) -> None:
-        self._jobs: dict[str, JobRecord] = {}
-
-    def create_job(self) -> JobRecord:
-        job = JobRecord(job_id=str(uuid4()))
-        self._jobs[job.job_id] = job
-        return job
-
-    def get(self, job_id: str) -> JobRecord | None:
-        return self._jobs.get(job_id)
-
-
-job_store = JobStore()
-
-
-def _clarify_requirement(payload: RequirementInput) -> ClarifiedRequirement:
-    return ClarifiedRequirement(
-        objectives=[f"Deliver measurable value for {payload.project_name}"],
-        in_scope=[payload.requirement_text[:140]],
-        out_of_scope=["Undocumented third-party integrations"],
-        constraints=["Budget and timeline to be validated"],
-        assumptions=["Stakeholder access available during delivery"],
-    )
+job_store = SqliteJobStore(settings.jobs_db_path)
 
 
 def run_generation(job_id: str, payload: RequirementInput, tavily_api_key: str) -> None:
@@ -56,62 +23,62 @@ def run_generation(job_id: str, payload: RequirementInput, tavily_api_key: str) 
         return
 
     try:
-        job.status = "processing"
+        job_store.update(job_id, status="processing", stage="pipeline")
+        audit_logger.log("job.start", {"job_id": job_id})
 
-        job.stage = "clarify"
-        clarified = _clarify_requirement(payload)
+        chroma = ChromaStore(settings.chroma_persist_dir)
+        neo4j = Neo4jStore(settings.neo4j_uri, settings.neo4j_user, settings.neo4j_password)
+        graphrag = GraphRAGService(chroma=chroma, neo4j=neo4j)
 
-        job.stage = "research"
-        research = TavilyService(tavily_api_key).search(
-            f"{payload.industry or ''} {payload.project_name} implementation best practices"
-        )
+        state = run_pipeline(payload=payload, tavily_api_key=tavily_api_key, graphrag=graphrag)
 
-        job.stage = "mine_questions"
-        questions = mine_questions(clarified)
-
-        job.stage = "plan_slides"
-        planned = build_slide_plan(payload.project_name, clarified, questions)
-
-        job.stage = "write_slides"
-        slides = write_slides(planned)
-
-        job.stage = "qa"
-        quality = score_deck(slides=slides, has_sources=bool(research))
-        if not quality.pass_gate:
-            job.status = "failed"
-            job.error = "; ".join(quality.issues)
-            job.artifacts["quality_report"] = quality.model_dump()
+        quality = state.get("quality_report", {})
+        if not quality.get("pass_gate", False):
+            job_store.update(
+                job_id,
+                status="failed",
+                stage="qa",
+                artifacts_json=json.dumps({"quality_report": quality, "claim_report": state.get("claim_report", {})}),
+                error="; ".join(quality.get("issues", ["quality gate failed"])),
+            )
+            audit_logger.log("job.failed", {"job_id": job_id, "reason": "quality_gate"})
             return
 
-        job.stage = "render_ppt"
-        artifacts_dir = Path("backend/artifacts") / job_id
+        artifacts_dir = Path(settings.artifacts_dir) / job_id
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+        slides = state.get("rendered_slides", [])
         pptx_path = render_ppt(slides, str(artifacts_dir / "deck.pptx"))
 
-        sources = [
-            {"id": idx + 1, "url": row.get("url", ""), "title": row.get("title", "")}
-            for idx, row in enumerate(research)
-        ]
+        questions = state.get("question_bank", [])
+        sources = state.get("research_docs", [])
 
-        artifacts_dir.mkdir(parents=True, exist_ok=True)
-        (artifacts_dir / "questions.json").write_text(
-            json.dumps([q.model_dump() for q in questions], indent=2), encoding="utf-8"
-        )
+        (artifacts_dir / "questions.json").write_text(json.dumps(questions, indent=2), encoding="utf-8")
         (artifacts_dir / "sources.json").write_text(json.dumps(sources, indent=2), encoding="utf-8")
-        (artifacts_dir / "quality_report.json").write_text(
-            json.dumps(quality.model_dump(), indent=2), encoding="utf-8"
+        (artifacts_dir / "quality_report.json").write_text(json.dumps(quality, indent=2), encoding="utf-8")
+        (artifacts_dir / "claim_report.json").write_text(
+            json.dumps(state.get("claim_report", {}), indent=2), encoding="utf-8"
         )
 
-        job.stage = "completed"
-        job.status = "completed"
-        job.artifacts = {
+        artifacts = {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "pptx_path": str(pptx_path),
+            "deck_path": str(pptx_path),
             "questions_path": str(artifacts_dir / "questions.json"),
             "sources_path": str(artifacts_dir / "sources.json"),
             "quality_report_path": str(artifacts_dir / "quality_report.json"),
-            "quality_report": quality.model_dump(),
+            "claim_report_path": str(artifacts_dir / "claim_report.json"),
+            "quality_report": quality,
         }
+
+        job_store.update(
+            job_id,
+            status="completed",
+            stage="completed",
+            artifacts_json=json.dumps(artifacts),
+            error=None,
+        )
+        audit_logger.log("job.completed", {"job_id": job_id, "pptx_path": str(pptx_path)})
     except Exception as exc:
-        job.status = "failed"
-        job.stage = "failed"
-        job.error = str(exc)
+        job_store.update(job_id, status="failed", stage="failed", error=str(exc))
+        audit_logger.log("job.failed", {"job_id": job_id, "error": str(exc)})
