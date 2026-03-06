@@ -11,37 +11,65 @@ class TaskType(str, Enum):
     FAST_EXTRACT = "fast_extract"
     REASONING = "reasoning"
     WRITING = "writing"
+    VISION = "vision"
+    THOUGHTS = "thoughts"
+    RAG_EVAL = "rag_eval"
 
 
 def _call_ollama(prompt: str, model: str) -> str:
-    response = httpx.post(
-        f"{settings.ollama_base_url}/api/generate",
-        json={"model": model, "prompt": prompt, "stream": False},
-        timeout=30,
-    )
-    response.raise_for_status()
-    return response.json().get("response", "")
+    try:
+        response = httpx.post(
+            f"{settings.ollama_base_url}/api/generate",
+            json={"model": model, "prompt": prompt, "stream": False},
+            timeout=30,
+        )
+        response.raise_for_status()
+        return response.json().get("response", "")
+    except Exception as e:
+        logger.warning("Ollama call failed: %s", e)
+        raise
 
 
-def _call_openrouter(prompt: str, model: str) -> str:
+def _call_openrouter(prompt: str, model: str, images: list[str] | None = None) -> str:
     if not settings.openrouter_api_key:
         raise RuntimeError("OPENROUTER_API_KEY not configured")
 
+    content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+    if images:
+        for img in images:
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": img}
+            })
+
     response = httpx.post(
         "https://openrouter.ai/api/v1/chat/completions",
-        headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
-        json={"model": model, "messages": [{"role": "user", "content": prompt}]},
-        timeout=45,
+        headers={
+            "Authorization": f"Bearer {settings.openrouter_api_key}",
+            "HTTP-Referer": "https://rfp-ai-platform.com", 
+            "X-Title": "RFP AI Platform"
+        },
+        json={
+            "model": model,
+            "messages": [{"role": "user", "content": content}]
+        },
+        timeout=60,
     )
     response.raise_for_status()
     return response.json()["choices"][0]["message"]["content"]
 
 
-def generate_text(task: TaskType, prompt: str) -> str:
+def generate_text(task: TaskType, prompt: str, images: list[str] | None = None) -> str:
+    # Optimized Task-Model Mapping: 
+    # Use cheap/local models for simple logic (Thoughts/Extract) 
+    # Use flagship models only for Final Writing/Vision.
     model_chain = {
-        TaskType.FAST_EXTRACT: [("ollama", "llama3.1:8b"), ("openrouter", "meta-llama/llama-3.1-8b-instruct")],
-        TaskType.REASONING: [("ollama", "llama3.1:8b"), ("openrouter", "meta-llama/llama-3.3-70b-instruct")],
-        TaskType.WRITING: [("ollama", "llama3.1:8b"), ("openrouter", "google/gemini-flash-1.5")],
+        TaskType.THOUGHTS: [("ollama", "llama3:8b"), ("openrouter", "meta-llama/llama-3.1-8b-instruct")],
+        TaskType.FAST_EXTRACT: [("ollama", "llama3:8b"), ("openrouter", "meta-llama/llama-3.1-8b-instruct")],
+        TaskType.REASONING: [("openrouter", "meta-llama/llama-3.3-70b-instruct"), ("ollama", "llama3:8b")],
+        TaskType.WRITING: [("openrouter", "google/gemini-flash-1.5"), ("openrouter", "anthropic/claude-3.5-sonnet")],
+        TaskType.VISION: [("openrouter", "openai/gpt-4o"), ("openrouter", "google/gemini-pro-1.5-vision")],
+        TaskType.RAG_EVAL: [("openrouter", "meta-llama/llama-3.1-8b-instruct"), ("ollama", "llama3:8b")],
     }[task]
 
     errors = []
@@ -50,7 +78,7 @@ def generate_text(task: TaskType, prompt: str) -> str:
             if provider == "ollama":
                 return _call_ollama(prompt, model)
             if provider == "openrouter":
-                return _call_openrouter(prompt, model)
+                return _call_openrouter(prompt, model, images=images)
         except Exception as exc:
             errors.append(f"{provider}:{exc}")
 

@@ -8,6 +8,9 @@ class RequirementInput(BaseModel):
     industry: str | None = None
     region: str | None = None
     requirement_text: str = Field(min_length=40)
+    role: str | None = "Solutions Architect"
+    tone: Literal["professional", "visionary", "concise", "technical"] = "professional"
+    attachments: list[str] = Field(default_factory=list)  # URLs or base64 paths
 
 
 class ClarifiedRequirement(BaseModel):
@@ -16,6 +19,8 @@ class ClarifiedRequirement(BaseModel):
     out_of_scope: list[str]
     constraints: list[str]
     assumptions: list[str]
+    competitive_advantage: list[str] = Field(default_factory=list)
+    needs_more_info: bool = False
 
 
 class QuestionItem(BaseModel):
@@ -38,7 +43,9 @@ class SlideSpec(BaseModel):
     title: str
     objective: str
     bullets: list[str]
+    layout: Literal["standard", "two_column", "comparison", "team", "timeline", "title"] = "standard"
     references: list[str] = Field(default_factory=list)
+    visual_prompt: str | None = None
 
 
 class QualityReport(BaseModel):

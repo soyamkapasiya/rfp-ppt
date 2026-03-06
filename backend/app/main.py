@@ -112,7 +112,17 @@ async def internal_error_handler(request: Request, exc) -> JSONResponse:
     )
 
 
-# ── Observability & routing ───────────────────────────────────────────────────
+# ── WebSockets & Observability ───────────────────────────────────────────────
+@app.websocket("/ws/jobs/{job_id}/progress")
+async def job_progress_ws(websocket: WebSocket, job_id: str):
+    await progress_service.connect(job_id, websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        progress_service.disconnect(job_id, websocket)
+
+
 register_observability(app)
 app.include_router(api_router)
 

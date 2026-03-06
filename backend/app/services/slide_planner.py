@@ -201,46 +201,81 @@ def build_slide_plan(
     project_name: str,
     clarified: ClarifiedRequirement,
     questions: list[QuestionItem],
+    competition_report: dict[str, Any] | None = None,
 ) -> list[SlideSpec]:
-    """Return the full 15-slide plan, enriched with clarified requirement data."""
+    """Return the full 15-slide plan, enriched with clarified requirement data and world-class layouts."""
     planned: list[SlideSpec] = []
 
     for tpl in REQUIRED_SLIDES:
         title: str = tpl["title"]
         bullets: list[str] = list(tpl["default_bullets"])
+        layout: str = "standard"
+        visual_prompt: str | None = None
 
-        # ── Personalise selected slides ────────────────────────────────────
+        # ── Personalise selected slides & layouts ──────────────────────────
         if title == "Title + Context":
             bullets[0] = f"Project: {project_name}  |  Responding to your published RFP"
+            layout = "title"
 
         elif title == "Executive Summary":
             if clarified.objectives:
                 bullets[0] = clarified.objectives[0]
             if clarified.constraints:
                 bullets[1] = f"Constraints acknowledged: {clarified.constraints[0]}"
+            layout = "two_column"
 
         elif title == "Problem Understanding":
             if clarified.in_scope:
                 bullets = [f"In scope: {s}" for s in clarified.in_scope[:3]] + bullets[3:]
             if clarified.out_of_scope:
                 bullets.append(f"Out of scope: {clarified.out_of_scope[0]}")
+            layout = "standard"
+
+        elif title == "Proposed Solution Overview":
+            layout = "two_column"
+            visual_prompt = f"Futuristic technical solution architecture for {project_name}, 3D flat design"
+
+        elif title == "Technical Architecture":
+            layout = "standard"
+            visual_prompt = "Complex systems diagram, clean corporate aesthetic, blueprint style"
+
+        elif title == "Timeline and Milestones":
+            layout = "timeline"
+
+        elif title == "Team and Governance":
+            layout = "team"
+
+        elif title == "Security & Compliance":
+            layout = "two_column"
 
         elif title == "Client Questions Answered":
             if questions:
                 q_bullets = [f"Q: {q.question}" for q in questions[:5]]
                 bullets = q_bullets or bullets
+            layout = "standard"
+
+        elif title == "Why Us / Differentiators":
+            if competition_report:
+                bullets = [f"Differentiator: {competition_report.get('our_edge', 'Proprietary accelerators')}"] + bullets[1:4]
+                if competition_report.get("competitors"):
+                    bullets.append(f"Analysis vs: {', '.join(competition_report['competitors'])}")
+            layout = "comparison"
+            visual_prompt = "Scale icon representing balance and competitive advantage, premium 3D"
 
         elif title == "Appendix with References":
             if clarified.assumptions:
                 bullets.insert(0, f"Key assumption: {clarified.assumptions[0]}")
                 bullets = bullets[:5]
+            layout = "standard"
 
         planned.append(
             SlideSpec(
                 title=title,
                 objective=f"Cover '{title}' comprehensively and persuasively",
                 bullets=bullets[:7],
+                layout=layout,
                 references=[],
+                visual_prompt=visual_prompt,
             )
         )
 

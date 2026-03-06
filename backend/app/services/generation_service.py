@@ -1,17 +1,6 @@
-"""
-generation_service.py – Core job orchestration.
-
-Fixes applied:
-  1. Quality gate failure is now NON-BLOCKING: deck is still generated and
-     saved; quality issues are recorded in artifacts for review.
-  2. Neo4j connection failure is caught gracefully (GraphRAGService is
-     created in try/except so a missing Neo4j doesn't abort the job).
-  3. project_name is injected into the first slide dict so the title slide
-     heading is personalised.
-"""
-
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -30,8 +19,12 @@ from app.workflows.rfp_graph import run_pipeline
 logger = logging.getLogger(__name__)
 job_store = SqliteJobStore(settings.jobs_db_path)
 
-
 def run_generation(job_id: str, payload: RequirementInput, tavily_api_key: str) -> None:
+    # Wrap in asyncio.run for synchronous Celery worker
+    asyncio.run(_run_generation_async(job_id, payload, tavily_api_key))
+
+
+async def _run_generation_async(job_id: str, payload: RequirementInput, tavily_api_key: str) -> None:
     job = job_store.get(job_id)
     if not job:
         return
@@ -40,18 +33,18 @@ def run_generation(job_id: str, payload: RequirementInput, tavily_api_key: str) 
         job_store.update(job_id, status="processing", stage="pipeline")
         audit_logger.log("job.start", {"job_id": job_id})
 
-        # ── Stores – graceful fallback if external services unavailable ──────
+        # ... (Stores setup)
         chroma = ChromaStore(settings.chroma_persist_dir)
         try:
             neo4j = Neo4jStore(settings.neo4j_uri, settings.neo4j_user, settings.neo4j_password)
         except Exception as e:
             logger.warning("Neo4j unavailable, using stub: %s", e)
             neo4j = Neo4jStore.__new__(Neo4jStore)
-            neo4j.driver = None  # stub – all Neo4j ops are no-ops when driver is None
+            neo4j.driver = None
 
         graphrag = GraphRAGService(chroma=chroma, neo4j=neo4j)
 
-        state = run_pipeline(payload=payload, tavily_api_key=tavily_api_key, graphrag=graphrag)
+        state = await run_pipeline(job_id=job_id, payload=payload, tavily_api_key=tavily_api_key, graphrag=graphrag)
 
         quality = state.get("quality_report", {})
 
