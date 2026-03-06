@@ -16,8 +16,10 @@ from app.services.job_store import SqliteJobStore
 from app.services.ppt_renderer import render_ppt
 from app.workflows.rfp_graph import run_pipeline
 
+job_url = settings.postgres_url if "sqlite" not in settings.postgres_url or ":memory:" not in settings.postgres_url else f"sqlite:///{settings.jobs_db_path}"
+job_store = SqliteJobStore(job_url)
+
 logger = logging.getLogger(__name__)
-job_store = SqliteJobStore(settings.jobs_db_path)
 
 def run_generation(job_id: str, payload: RequirementInput, tavily_api_key: str) -> None:
     # Wrap in asyncio.run for synchronous Celery worker
@@ -58,7 +60,24 @@ async def _run_generation_async(job_id: str, payload: RequirementInput, tavily_a
         if slides:
             slides[0]["project_name"] = payload.project_name
 
-        pptx_path = render_ppt(slides, str(artifacts_dir / "deck.pptx"))
+        pptx_path = render_ppt(slides, str(artifacts_dir / "deck_standard.pptx"))
+        standard_deck_path = pptx_path
+
+        manus_url = state.get("manus_pptx_url")
+        premium_deck_path = None
+        if manus_url:
+            from app.services.manus_service import ManusService
+            try:
+                manus = ManusService()
+                premium_path = artifacts_dir / "deck_premium.pptx"
+                logger.info("Downloading premium deck from Manus: %s", manus_url)
+                await manus.download_pptx(manus_url, str(premium_path))
+                premium_deck_path = str(premium_path)
+                logger.info("Successfully fetched Premium Manus deck.")
+            except Exception as e:
+                logger.error("Failed to fetch premium Manus deck: %s", e)
+        else:
+            logger.info("No Manus download URL found in state.")
 
         questions = state.get("question_bank", [])
         sources   = state.get("research_docs", [])
@@ -72,8 +91,9 @@ async def _run_generation_async(job_id: str, payload: RequirementInput, tavily_a
 
         artifacts = {
             "generated_at":        datetime.now(timezone.utc).isoformat(),
-            "pptx_path":           str(pptx_path),
-            "deck_path":           str(pptx_path),
+            "deck_path":           premium_deck_path or standard_deck_path, # Default
+            "premium_deck_path":   premium_deck_path,
+            "standard_deck_path":  standard_deck_path,
             "questions_path":      str(artifacts_dir / "questions.json"),
             "sources_path":        str(artifacts_dir / "sources.json"),
             "quality_report_path": str(artifacts_dir / "quality_report.json"),

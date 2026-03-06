@@ -15,13 +15,22 @@ type ExportItem = {
 
 const EXPORT_ITEMS: ExportItem[] = [
   {
-    id: "deck",
-    name: "Proposal Deck",
-    desc: "Full AI-generated PowerPoint presentation",
-    artifact: "deck",
-    icon: "📊",
+    id: "deck_premium",
+    name: "Proposal Deck (Premium)",
+    desc: "AI-designed high-end deck with custom layouts",
+    artifact: "premium_deck",
+    icon: "💎",
     iconClass: "export-item-icon-pptx",
-    ext: "deck.pptx",
+    ext: "premium_deck.pptx",
+  },
+  {
+    id: "deck_standard",
+    name: "Proposal Deck (Standard)",
+    desc: "Clean, reliable deck using Times New Roman for maximum compatibility",
+    artifact: "standard_deck",
+    icon: "📄",
+    iconClass: "export-item-icon-pptx",
+    ext: "standard_deck.pptx",
   },
   {
     id: "questions",

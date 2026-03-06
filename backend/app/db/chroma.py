@@ -30,11 +30,15 @@ class ChromaStore:
         if ids:
             self.collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
 
-    def query(self, query_text: str, top_k: int = 5) -> list[dict]:
+    def query(self, query_text: str, top_k: int = 5, where: dict | None = None) -> list[dict]:
         if not self.collection:
             return []
 
-        result = self.collection.query(query_texts=[query_text], n_results=top_k)
+        result = self.collection.query(
+            query_texts=[query_text], 
+            n_results=top_k,
+            where=where
+        )
         docs = result.get("documents", [[]])[0]
         metas = result.get("metadatas", [[]])[0]
         distances = result.get("distances", [[]])[0]

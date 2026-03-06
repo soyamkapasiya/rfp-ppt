@@ -76,7 +76,7 @@ def _add_textbox(slide, left, top, width, height, text: str, font_size: int,
     run.font.bold = bold
     run.font.italic = italic
     run.font.color.rgb = color
-    run.font.name = "Calibri"
+    run.font.name = "Times New Roman"
 
 
 def _set_slide_background(slide, color: RGBColor) -> None:
@@ -106,7 +106,7 @@ def _add_footer(slide, slide_num: int, total: int) -> None:
     _add_textbox(
         slide, Inches(0.3), Inches(7.07),
         Inches(8), Inches(0.35),
-        "RFP AI Platform  •  Confidential",
+        "shivanski technology llp  •  sales@shiavnski.in",
         font_size=9, color=LIGHT_GREY, align=PP_ALIGN.LEFT,
     )
     _add_textbox(
@@ -158,7 +158,7 @@ def _build_title_slide(prs: Presentation, project_name: str, subtitle: str) -> N
     _add_rect(slide, 0, Inches(6.3), SLIDE_W, Inches(1.2), fill_color=NAVY_MID)
     _add_textbox(
         slide, Inches(0.9), Inches(6.45), Inches(11), Inches(0.5),
-        "Prepared with  RFP AI Platform  •  Powered by Genspark AI Slides",
+        "Prepared by shivanski technology llp  •  https://www.shiavnski.in/",
         font_size=10, bold=False, color=GOLD, align=PP_ALIGN.LEFT,
     )
     _add_rect(slide, 0, Inches(7.38), SLIDE_W, Inches(0.12), fill_color=GOLD)

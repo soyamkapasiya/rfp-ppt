@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     gemini_api_key: str = ""
     openrouter_api_key: str = ""
+    manus_api_key: str = ""
 
     # ── Local LLM ─────────────────────────────────────────────────────────
     ollama_base_url: str = "http://localhost:11434"

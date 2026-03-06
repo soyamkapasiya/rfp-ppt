@@ -51,4 +51,4 @@ class VaultService:
 
     def query_vault(self, query: str, top_k: int = 5):
         # Query specifically for internal documents
-        return self.chroma.query(query, top_k=top_k, filter={"source_type": "internal_vault"})
+        return self.chroma.query(query, top_k=top_k, where={"source_type": "internal_vault"})

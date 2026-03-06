@@ -13,6 +13,7 @@ Fixes applied:
 from __future__ import annotations
 
 import logging
+from functools import partial
 from typing import Any, TypedDict
 
 from app.models.domain import ClarifiedRequirement, RequirementInput
@@ -28,6 +29,7 @@ from app.services.tavily_service import TavilyService
 from app.services.vault_service import VaultService
 from app.services.llm_router import generate_text, TaskType
 
+from app.core.config import settings
 from app.services.progress_service import progress_service
 
 logger = logging.getLogger(__name__)
@@ -43,11 +45,15 @@ class RFPState(TypedDict):
     question_bank: list[dict[str, Any]]
     slide_specs: list[dict[str, Any]]
     rendered_slides: list[dict[str, Any]]
+    manus_pptx_url: str | None
     claim_report: dict[str, Any]
     quality_report: dict[str, Any]
     loop_count: int
     critique: str | None
     is_approved: bool
+
+
+from app.services.manus_service import ManusService
 
 
 async def intervention_stage_node(state: RFPState) -> RFPState:
@@ -266,6 +272,59 @@ async def slide_writer_node(state: RFPState) -> RFPState:
     return state
 
 
+async def manus_ppt_node(state: RFPState) -> RFPState:
+    """Premium Node: Generate professional deck via Manus AI."""
+    logger.debug("Pipeline node: manus_ppt")
+    
+    if not settings.manus_api_key or settings.manus_api_key == "xxx":
+        logger.info("Manus API Key not set - skipping premium generation")
+        state["manus_pptx_url"] = None
+        return state
+
+    await progress_service.broadcast(state["job_id"], "manus", "Handing off research results to Manus AI for premium design...")
+
+    # Compile the 'best' context for Manus
+    payload = state["payload"]
+    research = "\n".join([d.get("text", "")[:400] for d in state.get("research_docs", [])])
+    vault = "\n".join([d.get("content", "") for d in state.get("internal_docs", [])])
+    
+    refined_context = (
+        f"OBJECTIVES: {state.get('clarified', {}).get('objectives')}\n"
+        f"COMPETITION: {state.get('competition_report', {}).get('our_edge')}\n"
+        f"INTERNAL KNOWLEDGE: {vault}\n"
+        f"WEB RESEARCH HIGHLIGHTS: {research[:2000]}"
+    )
+
+    manus = ManusService()
+    try:
+        # Respect user's slide count if provided, else default to 6 for 'The Best Way'
+        slide_count = payload.get("slide_count") or 6
+        
+        task_id = await manus.create_slides_task(
+            project_name=payload.get("project_name", "RFP Response"),
+            refined_content=refined_context,
+            slide_count=slide_count
+        )
+        # We don't poll here to avoid blocking the graph for 10 mins 
+        # unless we are in a synchronous fallback mode.
+        # But for the graph, we'll store the task_id.
+        # Actually, let's poll if we want the URL in the state immediately.
+        # For 'the best way', we wait for the masterpiece.
+        
+        result = await manus.poll_task_result(task_id, state["job_id"])
+        # Assuming the result has a 'result_url' or similar for the PPTX
+        state["manus_pptx_url"] = result.get("download_url") or result.get("result_url")
+        
+        await progress_service.broadcast(state["job_id"], "manus", "Manus AI has completed the premium deck generation.")
+    except Exception as e:
+        logger.error("Manus generation failed: %s", e)
+        state["manus_pptx_url"] = None
+    finally:
+        await manus.close()
+
+    return state
+
+
 async def visual_generator_node(state: RFPState) -> RFPState:
     """Dynamic Visual Generation: Integrate DALL-E 3 visual logic."""
     logger.debug("Pipeline node: visual_generator")
@@ -332,6 +391,7 @@ async def run_pipeline(job_id: str, payload: RequirementInput, tavily_api_key: s
         "question_bank": [],
         "slide_specs": [],
         "rendered_slides": [],
+        "manus_pptx_url": None,
         "claim_report": {},
         "quality_report": {},
         "loop_count": 0,
@@ -344,16 +404,17 @@ async def run_pipeline(job_id: str, payload: RequirementInput, tavily_api_key: s
 
         graph = StateGraph(RFPState)
         graph.add_node("clarify",          clarify_requirement_node)
-        graph.add_node("research",         lambda s: web_research_node(s, tavily_api_key, graphrag))
-        graph.add_node("context_bridge",   lambda s: context_bridge_node(s, graphrag))
-        graph.add_node("competition",      lambda s: competition_intel_node(s, tavily_api_key))
+        graph.add_node("research",         partial(web_research_node, tavily_api_key=tavily_api_key, graphrag=graphrag))
+        graph.add_node("context_bridge",   partial(context_bridge_node, graphrag=graphrag))
+        graph.add_node("competition",      partial(competition_intel_node, tavily_api_key=tavily_api_key))
         graph.add_node("mine_questions",   question_miner_node)
         graph.add_node("plan_slides",      slide_planner_node)
+        graph.add_node("manus_ppt",        manus_ppt_node)
         graph.add_node("intervention",     intervention_stage_node)
         graph.add_node("write_slides",     slide_writer_node)
         graph.add_node("visuals",          visual_generator_node)
         graph.add_node("qa",               quality_gate_node)
-        graph.add_node("learning_loop",    lambda s: learning_loop_node(s, graphrag))
+        graph.add_node("learning_loop",    partial(learning_loop_node, graphrag=graphrag))
 
         graph.set_entry_point("clarify")
         graph.add_edge("clarify",          "research")
@@ -361,7 +422,8 @@ async def run_pipeline(job_id: str, payload: RequirementInput, tavily_api_key: s
         graph.add_edge("context_bridge",   "competition")
         graph.add_edge("competition",      "mine_questions")
         graph.add_edge("mine_questions",   "plan_slides")
-        graph.add_edge("plan_slides",      "intervention")
+        graph.add_edge("plan_slides",      "manus_ppt")
+        graph.add_edge("manus_ppt",        "intervention")
         graph.add_edge("intervention",     "write_slides")
         graph.add_edge("write_slides",     "visuals")
         graph.add_edge("visuals",          "qa")
@@ -388,7 +450,9 @@ async def run_pipeline(job_id: str, payload: RequirementInput, tavily_api_key: s
     state = await competition_intel_node(state, tavily_api_key)
     state = await question_miner_node(state)
     state = await slide_planner_node(state)
+    state = await manus_ppt_node(state)
     state = await slide_writer_node(state)
     state = await visual_generator_node(state)
     state = await quality_gate_node(state)
+    state = await learning_loop_node(state, graphrag)
     return state

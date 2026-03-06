@@ -68,7 +68,7 @@ export function ScreenTabs({ active, onChange, hasJob }: Props) {
         </div>
         <div className="sidebar-status" style={{ paddingTop: 0, fontSize: 11 }}>
           <span style={{ width: 7 }} />
-          localhost:8000
+          {import.meta.env.VITE_API_BASE?.split("/")[2] || "localhost:8001"}
         </div>
       </div>
     </nav>
