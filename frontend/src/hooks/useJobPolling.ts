@@ -1,10 +1,24 @@
-import { useEffect, useState } from "react";
-import { getJob, JobStatus } from "../lib/api";
+// ─── Job polling hook ─────────────────────────────────────────────────────────
+import { useEffect, useRef, useState } from "react";
+import { getJob, type JobRecord, type JobStatus } from "../lib/api";
 
-export function useJobPolling(jobId: string | null) {
-  const [data, setData] = useState<JobStatus | null>(null);
+const POLL_INTERVAL_MS = 2500;
+const TERMINAL_STATES: JobStatus[] = ["completed", "failed"];
+
+export type JobPollingState = {
+  data: JobRecord | null;
+  isLoading: boolean;
+  error: string | null;
+};
+
+export function useJobPolling(jobId: string | null): JobPollingState {
+  const [data, setData] = useState<JobRecord | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Keep a stable ref to the interval so we can clear it without
+  // the effect re-running on every render.
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!jobId) {
@@ -14,44 +28,40 @@ export function useJobPolling(jobId: string | null) {
       return;
     }
 
-    let active = true;
-    let timer: ReturnType<typeof setInterval> | null = null;
+    let mounted = true;
 
-    const fetchOnce = async () => {
-      setIsLoading(true);
-      try {
-        const result = await getJob(jobId);
-        if (!active) {
-          return;
-        }
-        setData(result);
-        setError(null);
-
-        if (result.status === "completed" || result.status === "failed") {
-          if (timer) {
-            clearInterval(timer);
-            timer = null;
-          }
-        }
-      } catch (e) {
-        if (active) {
-          setError((e as Error).message);
-        }
-      } finally {
-        if (active) {
-          setIsLoading(false);
-        }
+    const clearTimer = () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
       }
     };
 
+    const fetchOnce = async () => {
+      try {
+        const result = await getJob(jobId);
+        if (!mounted) return;
+        setData(result);
+        setError(null);
+        // Stop polling once we reach a terminal state
+        if (TERMINAL_STATES.includes(result.status)) {
+          clearTimer();
+        }
+      } catch (e) {
+        if (!mounted) return;
+        setError((e as Error).message);
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    };
+
+    setIsLoading(true);
     fetchOnce();
-    timer = setInterval(fetchOnce, 2500);
+    timerRef.current = setInterval(fetchOnce, POLL_INTERVAL_MS);
 
     return () => {
-      active = false;
-      if (timer) {
-        clearInterval(timer);
-      }
+      mounted = false;
+      clearTimer();
     };
   }, [jobId]);
 
