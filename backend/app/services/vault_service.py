@@ -12,7 +12,7 @@ class VaultService:
         self.chroma = chroma
         self.neo4j = neo4j
 
-    def ingest_local_file(self, file_path: str):
+    def ingest_local_file(self, file_path: str, win_reason: str = "Technical Depth", win_rate: float = 0.8):
         path = Path(file_path)
         if not path.exists():
             logger.error("Vault file missing: %s", file_path)
@@ -28,13 +28,19 @@ class VaultService:
             "url": str(path.absolute()),
             "source_type": "internal_vault",
             "trust_score": 1.0,
-            "freshness_days": 0
+            "freshness_days": 0,
+            "win_reason": win_reason,
+            "win_rate": win_rate
         }
         
         enriched = enrich_sources([doc])
         self.chroma.add_documents(enriched)
-        self.neo4j.upsert_entity("InternalDocument", "name", path.name, {"path": str(path)})
-        logger.info("Vault ingested: %s", path.name)
+        self.neo4j.upsert_entity("InternalDocument", "name", path.name, {
+            "path": str(path),
+            "win_reason": win_reason,
+            "win_rate": win_rate
+        })
+        logger.info("Vault ingested: %s with win_reason: %s", path.name, win_reason)
 
     def ingest_correction(self, slide_title: str, corrected_content: str, project_name: str):
         """Learning Loop: Ingest human-edited content back into the Vault."""

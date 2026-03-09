@@ -18,6 +18,7 @@ and appendix.
 
 from __future__ import annotations
 
+from typing import Any
 from app.models.domain import ClarifiedRequirement, QuestionItem, SlideSpec
 
 # ── RFP domain knowledge (from Investopedia / Genspark AI Slides source) ─────
@@ -138,6 +139,8 @@ REQUIRED_SLIDES: list[dict] = [
     },
     {
         "title": "Risk and Mitigation",
+        "archetype": "Governance",
+        "layout": "risk_matrix",
         "default_bullets": [
             "Risk 1 – Scope creep: Managed via formal Change Request process",
             "Risk 2 – Third-party delays: Buffer weeks built into critical path",
@@ -177,15 +180,36 @@ REQUIRED_SLIDES: list[dict] = [
         ],
     },
     {
-        "title": "Why Us / Differentiators",
-        "default_bullets": RFP_BENEFITS_BULLETS,
+        "title": "Why Us / Competitive Analysis",
+        "archetype": "Competition",
+        "default_bullets": [
+            "Our solution vs. key market alternatives",
+            "Direct comparison of industry accelerators",
+            "Unique ROI drivers and cost-efficiency metrics",
+            "Proprietary methodology derived from successful bids",
+            "Why our specific approach beats generic competitors",
+        ],
+    },
+    {
+        "title": "Clarification Report",
+        "archetype": "Governance",
+        "layout": "grid",
+        "default_bullets": [
+            "High-priority questions identified for project success",
+            "Gaps in requirement documentation requiring workshop",
+            "Security and compliance clarifications",
+            "Operational assumptions flagged for validation",
+            "Next steps for requirement finalization",
+        ],
     },
     {
         "title": "Next Steps",
+        "archetype": "Conclusion",
         "default_bullets": RFP_PROCESS_BULLETS,
     },
     {
         "title": "Appendix with References",
+        "archetype": "Conclusion",
         "default_bullets": [
             "Investopedia: 'Request for Proposal (RFP): What It Is, Requirements, and Tips'",
             "Chesapeake Bay Trust sample RFP – best-practice formatting reference",
@@ -203,14 +227,24 @@ def build_slide_plan(
     questions: list[QuestionItem],
     competition_report: dict[str, Any] | None = None,
 ) -> list[SlideSpec]:
-    """Return the full 15-slide plan, enriched with clarified requirement data and world-class layouts."""
+    """Return the full 15-slide plan, enriched with clarified requirement data and win-rate signals."""
     planned: list[SlideSpec] = []
+    
+    # ── Point 6: Win-rate signals (Fictional Meta-steering) ──────────────
+    # If win-rate is high for Pricing focused bids, we prioritize that archetype
+    win_signal = competition_report.get("win_rate", 0.7) if competition_report else 0.7
+    priority_archetype = "Economics" if win_signal > 0.8 else "Technical"
 
     for tpl in REQUIRED_SLIDES:
         title: str = tpl["title"]
+        archetype: str = tpl.get("archetype", "General")
         bullets: list[str] = list(tpl["default_bullets"])
-        layout: str = "standard"
+        layout: str = tpl.get("layout", "standard")
         visual_prompt: str | None = None
+        win_themes: list[str] = []
+
+        if competition_report:
+            win_themes = [competition_report.get("our_edge", "")]
 
         # ── Personalise selected slides & layouts ──────────────────────────
         if title == "Title + Context":
@@ -222,7 +256,8 @@ def build_slide_plan(
                 bullets[0] = clarified.objectives[0]
             if clarified.constraints:
                 bullets[1] = f"Constraints acknowledged: {clarified.constraints[0]}"
-            layout = "two_column"
+            # Adjust layout based on win-rate priority
+            layout = "two_column" if priority_archetype == "Technical" else "comparison"
 
         elif title == "Problem Understanding":
             if clarified.in_scope:
@@ -274,6 +309,8 @@ def build_slide_plan(
                 objective=f"Cover '{title}' comprehensively and persuasively",
                 bullets=bullets[:7],
                 layout=layout,
+                archetype=archetype,
+                win_themes=win_themes,
                 references=[],
                 visual_prompt=visual_prompt,
             )
