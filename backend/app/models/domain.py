@@ -43,7 +43,9 @@ class SlideSpec(BaseModel):
     title: str
     objective: str
     bullets: list[str]
-    layout: Literal["standard", "two_column", "comparison", "team", "timeline", "title"] = "standard"
+    layout: Literal["standard", "two_column", "comparison", "team", "timeline", "title", "grid", "risk_matrix"] = "standard"
+    archetype: str | None = None  # e.g., "Executive Summary", "Technical Architecture"
+    win_themes: list[str] = Field(default_factory=list)
     references: list[str] = Field(default_factory=list)
     visual_prompt: str | None = None
 
@@ -53,6 +55,9 @@ class QualityReport(BaseModel):
     evidence_score: int
     feasibility_score: int
     executive_readability_score: int
+    visual_density_score: int = 0
+    narrative_arc_score: int = 0
     overall_score: int
     pass_gate: bool
     issues: list[str] = Field(default_factory=list)
+    slide_critiques: dict[str, str] = Field(default_factory=dict)  # "Slide Title": "Specific feedback"
