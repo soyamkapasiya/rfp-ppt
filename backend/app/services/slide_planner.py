@@ -244,7 +244,10 @@ def build_slide_plan(
         win_themes: list[str] = []
 
         if competition_report:
-            win_themes = [competition_report.get("our_edge", "")]
+            analysis_text = competition_report.get("analysis", "") # type: ignore
+            win_themes = [competition_report.get("our_edge", "")] # type: ignore
+            if analysis_text:
+                win_themes.append("BETTER THAN COMPETITOR strategy active")
 
         # ── Personalise selected slides & layouts ──────────────────────────
         if title == "Title + Context":
@@ -254,59 +257,48 @@ def build_slide_plan(
         elif title == "Executive Summary":
             if clarified.objectives:
                 bullets[0] = clarified.objectives[0]
-            if clarified.constraints:
-                bullets[1] = f"Constraints acknowledged: {clarified.constraints[0]}"
-            # Adjust layout based on win-rate priority
+            if competition_report:
+                bullets.append(f"Strategic Advantage: {competition_report.get('our_edge')}")
             layout = "two_column" if priority_archetype == "Technical" else "comparison"
 
         elif title == "Problem Understanding":
             if clarified.in_scope:
                 bullets = [f"In scope: {s}" for s in clarified.in_scope[:3]] + bullets[3:]
-            if clarified.out_of_scope:
-                bullets.append(f"Out of scope: {clarified.out_of_scope[0]}")
             layout = "standard"
 
         elif title == "Proposed Solution Overview":
             layout = "two_column"
+            if competition_report:
+                bullets.insert(0, "Superiority: Designed to outperform standard market offerings.")
             visual_prompt = f"Futuristic technical solution architecture for {project_name}, 3D flat design"
 
         elif title == "Technical Architecture":
             layout = "standard"
-            visual_prompt = "Complex systems diagram, clean corporate aesthetic, blueprint style"
-
-        elif title == "Timeline and Milestones":
-            layout = "timeline"
-
-        elif title == "Team and Governance":
-            layout = "team"
-
-        elif title == "Security & Compliance":
-            layout = "two_column"
-
-        elif title == "Client Questions Answered":
-            if questions:
-                q_bullets = [f"Q: {q.question}" for q in questions[:5]]
-                bullets = q_bullets or bullets
-            layout = "standard"
-
-        elif title == "Why Us / Differentiators":
+            visual_prompt = "Complex systems diagram, high-tier technical blueprint"
             if competition_report:
-                bullets = [f"Differentiator: {competition_report.get('our_edge', 'Proprietary accelerators')}"] + bullets[1:4]
-                if competition_report.get("competitors"):
-                    bullets.append(f"Analysis vs: {', '.join(competition_report['competitors'])}")
+               bullets.append("Graph suggestion: Comparative scalability vs Competitors")
+
+        elif title == "Why Us / Competitive Analysis":
             layout = "comparison"
-            visual_prompt = "Scale icon representing balance and competitive advantage, premium 3D"
+            if competition_report:
+                # Inject the deep analysis into bullets
+                detailed_strategy = competition_report.get("strategy_details", "No detailed analysis") # type: ignore
+                bullets = [
+                    "MARKET INTELLIGENCE:",
+                    f"Our Edge: {competition_report.get('our_edge')}", # type: ignore
+                    "Solution Superiority Strategy:",
+                    f"{detailed_strategy[:100]}...",
+                    "Graph: Relative Performance Index (Proposed vs Industry Std)"
+                ]
+            visual_prompt = "Scale icon representing competitive dominance, premium 3D"
 
         elif title == "Appendix with References":
-            if clarified.assumptions:
-                bullets.insert(0, f"Key assumption: {clarified.assumptions[0]}")
-                bullets = bullets[:5]
             layout = "standard"
 
         planned.append(
             SlideSpec(
                 title=title,
-                objective=f"Cover '{title}' comprehensively and persuasively",
+                objective=f"Cover '{title}' comprehensively and persuasively with competitive edge",
                 bullets=bullets[:7],
                 layout=layout,
                 archetype=archetype,

@@ -37,6 +37,8 @@ class QuestionItem(BaseModel):
     ]
     reason: str
     priority: Literal["high", "medium", "low"] = "medium"
+    user_answer: str | None = None
+    suggested_answer: str | None = None
 
 
 class SlideSpec(BaseModel):

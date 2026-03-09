@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -138,3 +139,69 @@ async def get_job_artifact(
         raise HTTPException(status_code=500, detail="Failed to read artifact file.") from exc
 
     return {"job_id": job_id, "artifact": artifact_name, "data": content}
+
+
+# ── HITL Interactions: Answers ──────────────────────────────────────────────
+@router.post(
+    "/jobs/{job_id}/answers",
+    summary="Submit user answers to mined questions",
+)
+async def submit_job_answers(
+    job_id: str,
+    answers: list[dict],
+    _role=Depends(require_editor),
+):
+    """
+    Saves user-provided answers and resumes the pipeline from 'research'.
+    Each dict in 'answers' should match QuestionItem (index or question text matching).
+    """
+    job = job_store.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    from app.services.generation_service import resume_generation
+    
+    # We pass the question_bank with user_answer fields filled
+    updated_data = {"question_bank": answers, "is_questions_answered": True}
+    
+    # Run in background
+    asyncio.create_task(
+        resume_generation(
+            job_id=job_id, 
+            start_node="research", 
+            tavily_api_key=settings.tavily_api_key, 
+            updated_data=updated_data
+        )
+    )
+    
+    return {"status": "resumed", "next_stage": "research"}
+
+
+# ── HITL Interactions: Final Approval ────────────────────────────────────────
+@router.post(
+    "/jobs/{job_id}/generate-premium",
+    summary="Final approval to trigger Manus Premium PPT generation",
+)
+async def approve_job_ppt(
+    job_id: str,
+    _role=Depends(require_editor),
+):
+    """Triggers the final phase: Manus PPT generation."""
+    job = job_store.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    from app.services.generation_service import resume_generation
+    
+    updated_data = {"is_approved": True}
+    
+    asyncio.create_task(
+        resume_generation(
+            job_id=job_id, 
+            start_node="manus_ppt", 
+            tavily_api_key=settings.tavily_api_key, 
+            updated_data=updated_data
+        )
+    )
+    
+    return {"status": "resumed", "next_stage": "manus_ppt"}

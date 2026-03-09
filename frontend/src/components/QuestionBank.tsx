@@ -194,9 +194,56 @@ export function QuestionBank({ jobId }: Props) {
                     </div>
                     <div className="question-text">{q.question}</div>
                     {q.reason && <div className="question-reason">{q.reason}</div>}
+
+                    <div style={{ marginTop: 15 }}>
+                      <label className="label-sm">Suggested Answer (AI):</label>
+                      <div className="suggested-answer-box">
+                        {q.suggested_answer || "Finding best answer..."}
+                      </div>
+
+                      <label className="label-sm" style={{ marginTop: 10 }}>Your Answer:</label>
+                      <textarea
+                        className="input-sm"
+                        placeholder="Provide your answer here or leave blank to use AI suggestion..."
+                        value={q.user_answer || ""}
+                        onChange={(e) => {
+                          const newQs = [...questions];
+                          const globalIdx = questions.findIndex(item => item.question === q.question);
+                          if (globalIdx !== -1) {
+                            newQs[globalIdx].user_answer = e.target.value;
+                            setQuestions(newQs);
+                          }
+                        }}
+                        rows={2}
+                      />
+                    </div>
                   </div>
                 ))
               )}
+            </div>
+
+            <div style={{ marginTop: 30, textAlign: "center" }}>
+              <button
+                className="btn btn-primary btn-lg"
+                onClick={async () => {
+                  if (!jobId) return;
+                  setIsLoading(true);
+                  try {
+                    await fetch(`http://localhost:8001/api/v1/generation/jobs/${jobId}/answers`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", "X-API-Key": "editor-local-key" },
+                      body: JSON.stringify(questions),
+                    });
+                    alert("Answers submitted! Continuing pipeline...");
+                  } catch (err) {
+                    setError("Failed to submit answers");
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+              >
+                Confirm Answers & Continue
+              </button>
             </div>
           </>
         )}

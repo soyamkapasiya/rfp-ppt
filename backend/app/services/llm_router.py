@@ -14,6 +14,8 @@ class TaskType(str, Enum):
     VISION = "vision"
     THOUGHTS = "thoughts"
     RAG_EVAL = "rag_eval"
+    SUGGEST_ANSWER = "suggest_answer"  # New task type for answering mined questions
+    COMPETITOR_ANALYSIS = "competitor_analysis"
 
 
 def _call_ollama(prompt: str, model: str) -> str:
@@ -60,16 +62,16 @@ def _call_openrouter(prompt: str, model: str, images: list[str] | None = None) -
 
 
 def generate_text(task: TaskType, prompt: str, images: list[str] | None = None) -> str:
-    # Optimized Task-Model Mapping: 
-    # Use cheap/local models for simple logic (Thoughts/Extract) 
-    # Use flagship models only for Final Writing/Vision.
+    # Optimized Task-Model Mapping for Token Efficiency & Quality
     model_chain = {
-        TaskType.THOUGHTS: [("ollama", "llama3:8b"), ("openrouter", "meta-llama/llama-3.1-8b-instruct")],
-        TaskType.FAST_EXTRACT: [("ollama", "llama3:8b"), ("openrouter", "meta-llama/llama-3.1-8b-instruct")],
-        TaskType.REASONING: [("openrouter", "meta-llama/llama-3.3-70b-instruct"), ("ollama", "llama3:8b")],
-        TaskType.WRITING: [("openrouter", "google/gemini-flash-1.5"), ("openrouter", "anthropic/claude-3.5-sonnet")],
-        TaskType.VISION: [("openrouter", "openai/gpt-4o"), ("openrouter", "google/gemini-pro-1.5-vision")],
+        TaskType.THOUGHTS: [("ollama", "qwen2.5:7b"), ("openrouter", "google/gemini-flash-1.5-8b")],
+        TaskType.FAST_EXTRACT: [("ollama", "llama3.2:3b"), ("openrouter", "google/gemini-flash-1.5-8b")],
+        TaskType.REASONING: [("openrouter", "meta-llama/llama-3.3-70b-instruct"), ("openrouter", "google/gemini-flash-1.5")],
+        TaskType.WRITING: [("openrouter", "anthropic/claude-3.5-sonnet"), ("openrouter", "google/gemini-flash-1.5")],
+        TaskType.VISION: [("openrouter", "openai/gpt-4o"), ("openrouter", "google/gemini-flash-1.5-vision")],
         TaskType.RAG_EVAL: [("openrouter", "meta-llama/llama-3.1-8b-instruct"), ("ollama", "llama3:8b")],
+        TaskType.SUGGEST_ANSWER: [("openrouter", "google/gemini-flash-1.5"), ("ollama", "llama3.1:8b")],
+        TaskType.COMPETITOR_ANALYSIS: [("openrouter", "meta-llama/llama-3.1-405b-instruct"), ("openrouter", "anthropic/claude-3.5-sonnet")],
     }[task]
 
     errors = []

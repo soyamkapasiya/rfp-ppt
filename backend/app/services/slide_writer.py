@@ -32,12 +32,16 @@ def write_slides(slides: List[SlideSpec], context: Optional[List[dict]] = None, 
         SLIDE TITLE: {slide.title}
         OBJECTIVE: {slide.objective}
         WIN THEMES: {', '.join(slide.win_themes)}
+        
+        { "COMPETITIVE STEERING: Use this strategy to outperform competitors: " + slide.objective if "BETTER THAN COMPETITOR" in slide.win_themes else "" }
+        
         CONTEXT:
         {context_text[:4000]}
 
         CRITICAL CONSTRAINTS:
         - EVERY bullet must end with a citation from the context, e.g. [web-1] or [vault-1].
         - NO FLUFF: Avoid 'world-class', 'cutting-edge', 'robust', 'seamless', 'leverage'. Use data instead.
+        - STRATEGY: Explicitly mention how our approach is superior to industry standard/competitors if data allows.
         - If the context doesn't support a claim, do not make it.
         - Format as a JSON list of strings.{critique_instruction}
         """

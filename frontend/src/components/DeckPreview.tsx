@@ -226,6 +226,36 @@ export function DeckPreview({ jobId }: Props) {
                 </ul>
               </div>
             )}
+            {/* Premium Generation Trigger */}
+            <div style={{ marginTop: 30, paddingTop: 20, borderTop: "1px solid var(--c-border)", textAlign: "center" }}>
+              <button
+                className="btn btn-primary btn-lg"
+                onClick={async () => {
+                  if (!jobId) return;
+                  setIsLoading(true);
+                  try {
+                    const res = await fetch(`http://localhost:8001/api/v1/generation/jobs/${jobId}/generate-premium`, {
+                      method: "POST",
+                      headers: { "X-API-Key": "editor-local-key" },
+                    });
+                    if (res.ok) {
+                      alert("Premium generation started! Manus AI is rendering your slides...");
+                    } else {
+                      throw new Error("Failed to start premium generation");
+                    }
+                  } catch (err) {
+                    setError("Failed to trigger premium generation");
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+              >
+                ✨ Generate Premium Manus Deck
+              </button>
+              <p style={{ marginTop: 10, fontSize: 12, color: "var(--c-text-muted)" }}>
+                This will trigger Manus AI to render a high-fidelity PPTX with your confirmed strategy.
+              </p>
+            </div>
           </>
         )}
       </div>

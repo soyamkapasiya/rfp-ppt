@@ -379,45 +379,31 @@ Use both retrieval modes and then rank:
 
 ---
 
-## 12. Orchestration with LangGraph
+## 12. Orchestration with LangGraph (Multi-Stage HITL)
 
-Use a stateful graph to enforce deterministic pipeline steps.
+Our system uses a dual-intervention strategy to ensure human oversight without bulk labor.
+
+### Stage 1: Question Answering & Suggestion
+After `mine_questions`, the `suggest_answers` node uses RAG to provide "best guess" responses. The user reviews these and provides corrections. The pipeline then uses these confirmed facts for deep research.
+
+### Stage 2: Quality Approval & Manus Handoff
+After the first draft is written and QA'd, the system pauses. The user reviews the content and clicks **"Generate Premium Deck"**. Only then is the Manus AI renderer triggered, saving tokens and ensuring the final result is exactly as desired.
 
 ```python
-# backend/app/workflows/rfp_graph.py
-from typing import TypedDict, Any
-from langgraph.graph import StateGraph, END
-
-
-class RFPState(TypedDict):
-    requirement_text: str
-    clarified: dict[str, Any]
-    research_docs: list[dict[str, Any]]
-    question_bank: list[dict[str, Any]]
-    slide_specs: list[dict[str, Any]]
-    quality_report: dict[str, Any]
-    pptx_path: str
-
-
+# Updated build_graph logic
 def build_graph():
     graph = StateGraph(RFPState)
-    graph.add_node("clarify", clarify_requirement_node)
-    graph.add_node("research", web_research_node)
-    graph.add_node("mine_questions", question_miner_node)
-    graph.add_node("plan_slides", slide_planner_node)
-    graph.add_node("write_slides", slide_writer_node)
-    graph.add_node("qa", quality_gate_node)
-    graph.add_node("render_ppt", render_ppt_node)
-
-    graph.set_entry_point("clarify")
-    graph.add_edge("clarify", "research")
-    graph.add_edge("research", "mine_questions")
-    graph.add_edge("mine_questions", "plan_slides")
-    graph.add_edge("plan_slides", "write_slides")
-    graph.add_edge("write_slides", "qa")
-    graph.add_conditional_edges("qa", qa_router, {"pass": "render_ppt", "fail": END})
-    graph.add_edge("render_ppt", END)
-    return graph.compile()
+    graph.add_node("clarify",          clarify_requirement_node)
+    graph.add_node("mine_questions",   question_miner_node)
+    graph.add_node("suggest_answers",  suggest_answers_node)
+    graph.add_node("human_answering",  human_answering_node) # State: Pause
+    graph.add_node("research",         web_research_node)
+    graph.add_node("competition",      competition_intel_node)
+    graph.add_node("plan_slides",      slide_planner_node)
+    graph.add_node("write_slides",     slide_writer_node)
+    graph.add_node("qa",               quality_gate_node)
+    graph.add_node("intervention",     intervention_stage_node) # State: Pause
+    graph.add_node("manus_ppt",        manus_ppt_node)
 ```
 
 Why this matters:

@@ -25,6 +25,8 @@ export type QuestionItem = {
   category: string;
   reason?: string;
   priority?: "high" | "medium" | "low";
+  user_answer?: string;
+  suggested_answer?: string;
 };
 
 export type QualityReport = {
